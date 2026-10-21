@@ -1,0 +1,67 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: packaging/debian/build-deb.sh ubuntu:24.04
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/*.deb
+
+  arch:
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm --needed rust clang pipewire libpipewire git
+      - uses: actions/checkout@v4
+      - name: makepkg
+        run: |
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          su builder -c "cd '$GITHUB_WORKSPACE/packaging/arch' && makepkg -f --noconfirm"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: packaging/arch/nc-cable-[0-9]*.pkg.tar.zst
+
+  release:
+    needs: [ubuntu, arch]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && sha256sum * > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: NC-Cable ${{ github.ref_name }}
+          files: dist/*
+          body: |
+            Cabo de áudio virtual para PipeWire: o que toca em **NC-Cable Input** sai em **NC-Cable Output**.
+
+            **Arch Linux**
+            ```sh
+            sudo pacman -U nc-cable-*-x86_64.pkg.tar.zst
+            systemctl --user enable --now nc-cable
+            ```
+
+            **Ubuntu 24.04+**
+            ```sh
+            sudo apt install ./nc-cable_*_amd64.deb
+            systemctl --user enable --now nc-cable
+            ```
+
+            Status e níveis: `nc-cable status --watch`. Configuração: `nc-cable init-config`.
