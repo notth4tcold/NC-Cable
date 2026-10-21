@@ -23,12 +23,33 @@ microfone para outro (OBS, Discord, DAW, gravador).
 
 ## Instalação
 
-### Arch Linux
+### Pela release (pacote pronto)
+
+Baixe o pacote da página de *Releases*:
+
+```sh
+# Arch Linux
+sudo pacman -U nc-cable-0.1.0-1-x86_64.pkg.tar.zst
+
+# Ubuntu 24.04+ (o 22.04 não serve: usa PulseAudio e um PipeWire antigo demais)
+sudo apt install ./nc-cable_0.1.0_amd64.deb
+
+# depois, nos dois:
+systemctl --user enable --now nc-cable
+```
+
+### Arch Linux (compilando)
 
 ```sh
 cd packaging/arch
 makepkg -si
 systemctl --user enable --now nc-cable
+```
+
+### Gerar os pacotes da release
+
+```sh
+scripts/build-release.sh   # cria dist/*.pkg.tar.zst, dist/*.deb e SHA256SUMS (o .deb usa Docker)
 ```
 
 ### Outras distribuições
