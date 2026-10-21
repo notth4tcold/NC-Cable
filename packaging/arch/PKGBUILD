@@ -1,0 +1,43 @@
+# Builds the package from this local checkout:
+#   cd packaging/arch && makepkg -si
+pkgname=nc-cable
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Virtual audio cable for PipeWire: everything played into the cable input comes out of the cable output'
+arch=('x86_64' 'aarch64')
+license=('MIT')
+depends=('pipewire' 'libpipewire' 'gcc-libs' 'glibc')
+makedepends=('cargo' 'clang')
+options=('!lto')
+
+prepare() {
+  rm -rf "$srcdir/$pkgname"
+  mkdir -p "$srcdir/$pkgname"
+  local repo
+  repo="$(realpath "$startdir/../..")"
+  cp -r "$repo/Cargo.toml" "$repo/Cargo.lock" "$repo/src" "$repo/README.md" "$srcdir/$pkgname/"
+  install -Dm644 "$repo/packaging/systemd/nc-cable.service" "$srcdir/$pkgname/packaging/systemd/nc-cable.service"
+  cd "$srcdir/$pkgname"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$srcdir/$pkgname"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$srcdir/$pkgname"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --release
+}
+
+package() {
+  cd "$srcdir/$pkgname"
+  install -Dm755 target/release/nc-cable "$pkgdir/usr/bin/nc-cable"
+  install -Dm644 packaging/systemd/nc-cable.service "$pkgdir/usr/lib/systemd/user/nc-cable.service"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
