@@ -124,6 +124,9 @@ pub struct Producer {
 pub struct Consumer {
     ring: Arc<Ring>,
     primed: bool,
+    /// Writer call count seen at the previous pull, to tell a stalled writer
+    /// (real loss) from one that stopped because playback ended.
+    last_push_calls: u64,
 }
 
 pub fn split(ring: &Arc<Ring>) -> (Producer, Consumer) {
@@ -132,6 +135,7 @@ pub fn split(ring: &Arc<Ring>) -> (Producer, Consumer) {
         Consumer {
             ring: ring.clone(),
             primed: false,
+            last_push_calls: 0,
         },
     )
 }
@@ -198,12 +202,19 @@ impl Consumer {
             .last_quantum_out
             .store(frames as u32, Ordering::Relaxed);
 
+        let push_calls = stats.push_calls.load(Ordering::Relaxed);
+        let writer_active = push_calls != self.last_push_calls;
+        self.last_push_calls = push_calls;
+
         let mut r = ring.read.load(Ordering::Relaxed);
         let w = ring.write.load(Ordering::Acquire);
         let mut fill = w.wrapping_sub(r);
 
         if !self.primed {
-            if fill < target.max(frames) {
+            // While priming, hold data back until the target is reached, unless the
+            // writer has stopped: then flush the tail instead of leaving it stuck
+            // in front of the next stream.
+            if fill < target.max(frames) && (writer_active || fill == 0) {
                 out.fill(0.0);
                 return;
             }
@@ -230,10 +241,12 @@ impl Consumer {
 
         if n < frames {
             out[n * ch..].fill(0.0);
-            stats.underruns.fetch_add(1, Ordering::Relaxed);
-            stats
-                .pull_loss
-                .fetch_add((frames - n) as u64, Ordering::Relaxed);
+            if writer_active {
+                stats.underruns.fetch_add(1, Ordering::Relaxed);
+                stats
+                    .pull_loss
+                    .fetch_add((frames - n) as u64, Ordering::Relaxed);
+            }
             self.primed = false;
         }
         track_peaks(&stats.peak_out, out, ch);
@@ -298,12 +311,41 @@ mod tests {
         p.push(&[1.0; 6]);
         c.pull(&mut out);
         assert_eq!(out, [1.0; 4]);
+        p.push(&[]); // writer still running, just starved
         c.pull(&mut out);
         assert_eq!(out, [1.0, 1.0, 0.0, 0.0]);
         assert_eq!(ring.stats.pull_loss.load(Ordering::Relaxed), 2);
         p.push(&[2.0; 2]);
         c.pull(&mut out);
         assert_eq!(out, [0.0; 4], "re-priming after underrun");
+    }
+
+    #[test]
+    fn drained_after_writer_stops_is_not_a_loss() {
+        let ring = Ring::new(1, 32, 4);
+        let (mut p, mut c) = split(&ring);
+        let mut out = vec![0.0; 4];
+        p.push(&[1.0; 6]);
+        c.pull(&mut out);
+        c.pull(&mut out);
+        assert_eq!(out, [1.0, 1.0, 0.0, 0.0], "tail still delivered");
+        c.pull(&mut out);
+        assert_eq!(ring.stats.pull_loss.load(Ordering::Relaxed), 0);
+        assert_eq!(ring.stats.underruns.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn tail_left_while_priming_is_flushed_when_writer_stops() {
+        let ring = Ring::new(1, 32, 8);
+        let (mut p, mut c) = split(&ring);
+        let mut out = vec![0.0; 4];
+        p.push(&[3.0; 3]);
+        c.pull(&mut out);
+        assert_eq!(out, [0.0; 4], "writer active: keep priming");
+        c.pull(&mut out);
+        assert_eq!(out, [3.0, 3.0, 3.0, 0.0], "writer stopped: tail flushed");
+        assert_eq!(ring.fill(), 0);
+        assert_eq!(ring.stats.pull_loss.load(Ordering::Relaxed), 0);
     }
 
     #[test]
