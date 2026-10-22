@@ -1,7 +1,7 @@
 # Builds the package from this local checkout:
 #   cd packaging/arch && makepkg -si
 pkgname=nc-cable
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc='Virtual audio cable for PipeWire: everything played into the cable input comes out of the cable output'
 arch=('x86_64' 'aarch64')

@@ -1,6 +1,6 @@
 [package]
 name = "nc-cable"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Virtual audio cable for Linux (PipeWire): everything played into the cable input comes out of the cable output"

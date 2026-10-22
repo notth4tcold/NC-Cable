@@ -29,10 +29,10 @@ Baixe o pacote da página de *Releases*:
 
 ```sh
 # Arch Linux
-sudo pacman -U nc-cable-0.1.0-1-x86_64.pkg.tar.zst
+sudo pacman -U nc-cable-0.1.1-1-x86_64.pkg.tar.zst
 
 # Ubuntu 24.04+ (o 22.04 não serve: usa PulseAudio e um PipeWire antigo demais)
-sudo apt install ./nc-cable_0.1.0_amd64.deb
+sudo apt install ./nc-cable_0.1.1_amd64.deb
 
 # depois, nos dois:
 systemctl --user enable --now nc-cable
